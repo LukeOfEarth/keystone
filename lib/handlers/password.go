@@ -74,7 +74,20 @@ func DeletePassword(handle string) {
 		log.Fatalf("No password found for identifier %s", handle)
 	}
 
-	// TODO: Deletion logic
+	fmt.Printf("You are trying to delete the password for identifier %s\n", handle)
+	fmt.Println("If you continue with this action, you will not be able to retrieve the password in the future")
+	confirmed := confirmAction()
+
+	if !confirmed {
+		return
+	}
+
+	err := db.Delete(handle)
+	if err != nil {
+		log.Fatalf("Failed to delete password for identifier %s: %s", handle, err.Error())
+	}
+
+	fmt.Printf("Password for identifier %s successfully deleted", handle)
 }
 
 func confirmAction() bool {

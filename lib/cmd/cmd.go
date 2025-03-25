@@ -78,6 +78,7 @@ var deleteCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		auth.CheckPassword()
+		handlers.DeletePassword(args[0])
 	},
 }
 
