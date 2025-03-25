@@ -5,11 +5,21 @@ import (
 	"keystone/lib/auth"
 	"keystone/lib/db"
 	"log"
+	"strings"
 
 	"github.com/atotto/clipboard"
 )
 
 func CreatePassword(handle string) {
+	existing := db.Get(handle)
+	if existing != nil {
+		fmt.Printf("A password is already saved for identifier %s\n", handle)
+		confirmed := confirmAction()
+		if !confirmed {
+			return
+		}
+	}
+
 	password := auth.GeneratePassword(16)
 	key := auth.GetEncryptionKey()
 
@@ -17,8 +27,6 @@ func CreatePassword(handle string) {
 	if err != nil {
 		log.Fatalf("Failed to encrypt new password: %s", err.Error())
 	}
-
-	// TODO: Confirm if key clash
 
 	db.Put(handle, encrypted)
 
@@ -61,5 +69,23 @@ func GetPassword(handle string) {
 }
 
 func DeletePassword(handle string) {
-	// TODO: confirmation
+	existing := db.Get(handle)
+	if existing == nil {
+		log.Fatalf("No password found for identifier %s", handle)
+	}
+
+	// TODO: Deletion logic
+}
+
+func confirmAction() bool {
+	fmt.Println("Do you want to continue? (y/n)")
+
+	var text string
+	_, err := fmt.Scanf("%s", &text)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	s := strings.ToLower(text)
+	return s == "y"
 }
