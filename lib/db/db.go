@@ -72,14 +72,17 @@ func Get(key string) []byte {
 }
 
 func Put(key, value string) error {
-	var out error
-
-	database.Update(func(tx *bolt.Tx) error {
+	return database.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		err := b.Put([]byte(key), []byte(value))
-		out = err
 		return err
 	})
+}
 
-	return out
+func Delete(key string) error {
+	return database.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketName))
+		err := b.Delete([]byte(key))
+		return err
+	})
 }
