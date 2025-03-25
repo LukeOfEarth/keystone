@@ -33,23 +33,42 @@ func CloseDB() {
 	}
 }
 
-func Query(key string) []byte {
-	var res []byte
-
-	if database == nil {
-		panic("db not initialized")
-	}
+func List(target int) [][]byte {
+	var data [][]byte
 
 	database.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		if b == nil {
 			panic("no bucket found")
 		}
-		res = b.Get([]byte(key))
+
+		b.ForEach(func(k, v []byte) error {
+			if target == 0 {
+				data = append(data, k)
+			} else {
+				data = append(data, v)
+			}
+			return nil
+		})
 		return nil
 	})
 
-	return res
+	return data
+}
+
+func Get(key string) []byte {
+	var data []byte
+
+	database.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketName))
+		if b == nil {
+			panic("no bucket found")
+		}
+		data = b.Get([]byte(key))
+		return nil
+	})
+
+	return data
 }
 
 func Put(key, value string) error {

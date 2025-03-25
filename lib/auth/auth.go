@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"keystone/lib/db"
+	"log"
 	"syscall"
 
 	"golang.org/x/term"
@@ -38,18 +39,20 @@ func CreateMasterPassword() {
 	fmt.Println("Master key set!")
 }
 
-func CheckPassword() {
-	master := db.Query("$MASTER$")
+func CheckPassword() string {
+	master := db.Get("$MASTER$")
 	password := requestPassword()
 	valid := validatePassword(password, string(master))
 
 	if !valid {
-		fmt.Println("Invalid master key")
+		log.Fatal("Invalid master key")
 	}
+
+	return password
 }
 
 func checkPasswordInit() bool {
-	exists := db.Query("$MASTER$")
+	exists := db.Get("$MASTER$")
 	return exists != nil
 }
 
