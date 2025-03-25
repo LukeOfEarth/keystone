@@ -11,6 +11,10 @@ import (
 )
 
 func CreatePassword(handle string) {
+	if handle == "$MASTER$" {
+		log.Fatalln("Identifier $MASTER$ is invalid")
+	}
+
 	existing := db.Get(handle)
 	if existing != nil {
 		fmt.Printf("A password is already saved for identifier %s\n", handle)
@@ -52,6 +56,10 @@ func ListPasswords() {
 }
 
 func GetPassword(handle string) {
+	if handle == "$MASTER$" {
+		log.Fatalln("Identifier $MASTER$ is invalid")
+	}
+
 	password := db.Get(handle)
 	if password == nil {
 		log.Fatalf("\nNo password at handle %s", handle)
@@ -69,6 +77,10 @@ func GetPassword(handle string) {
 }
 
 func DeletePassword(handle string) {
+	if handle == "$MASTER$" {
+		log.Fatalln("Identifier $MASTER$ is invalid")
+	}
+
 	existing := db.Get(handle)
 	if existing == nil {
 		log.Fatalf("No password found for identifier %s", handle)
