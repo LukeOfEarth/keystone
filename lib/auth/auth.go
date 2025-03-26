@@ -12,26 +12,24 @@ import (
 func CreateMasterPassword() {
 	exists := checkPasswordInit()
 	if exists {
-		fmt.Println("Master key is already set for this account")
-		return
+		log.Fatalln("Master key is already set for this account")
 	}
 
 	fmt.Println("Your master key is not set!")
 	fmt.Println("Create master key: ")
 	password, err := term.ReadPassword(int(syscall.Stdin))
 	if err != nil {
-		panic(err.Error())
+		log.Fatalf("Failed to read password input: %s", err.Error())
 	}
 
 	fmt.Println("Confirm master key: ")
 	confirm, err := term.ReadPassword(int(syscall.Stdin))
 	if err != nil {
-		panic(err.Error())
+		log.Fatalf("Failed to read password input: %s", err.Error())
 	}
 
 	if string(confirm) != string(password) {
-		fmt.Println("Passwords do not match")
-		return
+		log.Fatalln("Passwords do not match")
 	}
 
 	hashed := newPassword(string(password))
@@ -45,7 +43,7 @@ func CheckPassword() string {
 	valid := validatePassword(password, string(master))
 
 	if !valid {
-		log.Fatal("Invalid master key")
+		log.Fatalln("Invalid master key")
 	}
 
 	return password
@@ -60,7 +58,7 @@ func requestPassword() string {
 	fmt.Println("Enter master key: ")
 	password, err := term.ReadPassword(int(syscall.Stdin))
 	if err != nil {
-		panic(err.Error())
+		log.Fatalf("Failed to read password input: %s", err.Error())
 	}
 
 	return string(password)

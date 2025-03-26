@@ -38,7 +38,7 @@ func generateSalt() string {
 	salt := make([]byte, 16)
 	_, err := rand.Read(salt)
 	if err != nil {
-		panic(fmt.Errorf("error generating salt: %v", err.Error()))
+		log.Fatalf("Error generating salt: %v", err.Error())
 	}
 	return base64.StdEncoding.EncodeToString(salt)
 }

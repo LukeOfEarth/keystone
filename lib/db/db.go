@@ -1,6 +1,8 @@
 package db
 
 import (
+	"log"
+
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -12,7 +14,7 @@ var database *bolt.DB
 func InitDB() {
 	db, err := bolt.Open(dbPath, 0600, nil)
 	if err != nil {
-		panic(err.Error())
+		log.Fatalf("Failed to initialize database: %s", err.Error())
 	}
 
 	database = db
@@ -23,7 +25,7 @@ func InitDB() {
 	})
 
 	if err2 != nil {
-		panic(err2.Error())
+		log.Fatalf("Failed to initialize database bucket: %s", err2.Error())
 	}
 }
 
@@ -39,7 +41,7 @@ func List(target int) [][]byte {
 	database.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		if b == nil {
-			panic("no bucket found")
+			log.Fatalln("No database bucket found")
 		}
 
 		b.ForEach(func(k, v []byte) error {
@@ -62,7 +64,7 @@ func Get(key string) []byte {
 	database.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		if b == nil {
-			panic("no bucket found")
+			log.Fatalln("No database bucket found")
 		}
 		data = b.Get([]byte(key))
 		return nil
@@ -74,6 +76,9 @@ func Get(key string) []byte {
 func Put(key, value string) error {
 	return database.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
+		if b == nil {
+			log.Fatalln("No database bucket found")
+		}
 		err := b.Put([]byte(key), []byte(value))
 		return err
 	})
@@ -82,6 +87,9 @@ func Put(key, value string) error {
 func Delete(key string) error {
 	return database.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
+		if b == nil {
+			log.Fatalln("No database bucket found")
+		}
 		err := b.Delete([]byte(key))
 		return err
 	})
