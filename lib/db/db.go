@@ -6,12 +6,11 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-const dbPath = "keystone.db"
 const bucketName = "keystone"
 
 var database *bolt.DB
 
-func InitDB() {
+func InitDB(dbPath string) {
 	db, err := bolt.Open(dbPath, 0600, nil)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %s", err.Error())
