@@ -11,7 +11,7 @@ const bucketName = "keystone"
 
 var database *bolt.DB
 
-func InitDB(dbPath string) {
+func InitDB(dbPath string) *bolt.DB {
 	db, err := bolt.Open(dbPath, 0600, nil)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %s", err.Error())
@@ -27,6 +27,8 @@ func InitDB(dbPath string) {
 	if err2 != nil {
 		log.Fatalf("Failed to initialize database bucket: %s", err2.Error())
 	}
+
+	return db
 }
 
 func CloseDB() {
