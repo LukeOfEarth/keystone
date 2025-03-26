@@ -98,6 +98,7 @@ func Delete(key string) error {
 }
 
 func ClearDB(dbPath string) {
+	CloseDB()
 	err := os.Remove(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to delete database file: %s", err.Error())
