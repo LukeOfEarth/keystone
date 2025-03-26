@@ -18,7 +18,7 @@ func CreatePassword(handle string) {
 	existing := db.Get(handle)
 	if existing != nil {
 		fmt.Printf("A password is already saved for identifier %s\n", handle)
-		confirmed := confirmAction()
+		confirmed := ConfirmAction()
 		if !confirmed {
 			return
 		}
@@ -88,7 +88,7 @@ func DeletePassword(handle string) {
 
 	fmt.Printf("You are trying to delete the password for identifier %s\n", handle)
 	fmt.Println("If you continue with this action, you will not be able to retrieve the password in the future")
-	confirmed := confirmAction()
+	confirmed := ConfirmAction()
 
 	if !confirmed {
 		return
@@ -102,7 +102,7 @@ func DeletePassword(handle string) {
 	fmt.Printf("Password for identifier %s successfully deleted", handle)
 }
 
-func confirmAction() bool {
+func ConfirmAction() bool {
 	fmt.Println("Do you want to continue? (y/n)")
 
 	var text string

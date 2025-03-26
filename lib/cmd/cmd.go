@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 	Short: "Keystone is a secure local password management tool",
 	Long:  `A password manager for the engineer who doesn't like leaving their terminal`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		db.InitDB()
+		db.InitDB("keystone.db")
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
 		db.CloseDB()
@@ -82,6 +82,20 @@ var deleteCmd = &cobra.Command{
 	},
 }
 
+var resetCmd = &cobra.Command{
+	Use:   "reset",
+	Short: "Resets the Keystone database",
+	Run: func(cmd *cobra.Command, args []string) {
+		auth.CheckPassword()
+		fmt.Println("You are about to delete all of the stored data")
+		confirmed := handlers.ConfirmAction()
+		if confirmed {
+			db.ClearDB("keystone.db")
+			fmt.Println("Successfully reset Keystone")
+		}
+	},
+}
+
 func InitCobra() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(initCmd)
@@ -89,6 +103,7 @@ func InitCobra() {
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(getCmd)
 	rootCmd.AddCommand(deleteCmd)
+	rootCmd.AddCommand(resetCmd)
 }
 
 func Execute() {

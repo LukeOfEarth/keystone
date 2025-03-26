@@ -2,6 +2,7 @@ package db
 
 import (
 	"log"
+	"os"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -92,4 +93,11 @@ func Delete(key string) error {
 		err := b.Delete([]byte(key))
 		return err
 	})
+}
+
+func ClearDB(dbPath string) {
+	err := os.Remove(dbPath)
+	if err != nil {
+		log.Fatalf("Failed to delete database file: %s", err.Error())
+	}
 }
