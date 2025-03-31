@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"keystone/lib/db"
@@ -78,6 +79,10 @@ func Encrypt(plaintext, key string) (string, error) {
 }
 
 func Decrypt(encrypted, key string) (string, error) {
+	if encrypted == "" {
+		return "", errors.New("encrypted string cannot be empty")
+	}
+
 	data, err := base64.StdEncoding.DecodeString(encrypted)
 	if err != nil {
 		return "", err
