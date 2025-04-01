@@ -1,6 +1,9 @@
 package tests
 
 import (
+	"bytes"
+	"crypto/pbkdf2"
+	"crypto/sha256"
 	"encoding/base64"
 	"keystone/lib/auth"
 	"reflect"
@@ -568,6 +571,319 @@ func TestNewPassword(t *testing.T) {
 		// Should not validate with a different password
 		if validatePasswordFunc("wrongpassword", formattedResult) {
 			t.Errorf("Validation incorrectly passed with wrong password")
+		}
+	})
+}
+
+func TestDeriveKey(t *testing.T) {
+	// Access the exported function through TestExport
+	deriveKeyFunc := auth.TestExport.DeriveKey
+
+	t.Run("Basic functionality", func(t *testing.T) {
+		password := "testpassword"
+		salt := "testsalt"
+		iterations := 1000
+		keyLen := 32
+
+		key, err := deriveKeyFunc(password, salt, iterations, keyLen)
+		if err != nil {
+			t.Error(err.Error())
+		}
+
+		// Check that the key is not nil and has the expected length
+		if key == nil {
+			t.Error("deriveKey returned nil")
+		}
+
+		if len(key) != keyLen {
+			t.Errorf("Key length is %d, expected %d", len(key), keyLen)
+		}
+	})
+
+	t.Run("Consistency with same inputs", func(t *testing.T) {
+		password := "mysecretpassword"
+		salt := "somesalt"
+		iterations := 1000
+		keyLen := 32
+
+		// Generate key twice with same inputs
+		key1, err1 := deriveKeyFunc(password, salt, iterations, keyLen)
+		if err1 != nil {
+			t.Error(err1.Error())
+		}
+
+		key2, err2 := deriveKeyFunc(password, salt, iterations, keyLen)
+		if err2 != nil {
+			t.Error(err2.Error())
+		}
+
+		// Keys should be identical for same inputs
+		if !bytes.Equal(key1, key2) {
+			t.Error("deriveKey produced different results for same inputs")
+		}
+	})
+
+	t.Run("Different passwords produce different keys", func(t *testing.T) {
+		salt := "fixedsalt"
+		iterations := 1000
+		keyLen := 32
+
+		key1, err1 := deriveKeyFunc("password1", salt, iterations, keyLen)
+		if err1 != nil {
+			t.Error(err1.Error())
+		}
+
+		key2, err2 := deriveKeyFunc("password2", salt, iterations, keyLen)
+		if err2 != nil {
+			t.Error(err2.Error())
+		}
+
+		if bytes.Equal(key1, key2) {
+			t.Error("Different passwords produced the same key")
+		}
+	})
+
+	t.Run("Different salts produce different keys", func(t *testing.T) {
+		password := "samepassword"
+		iterations := 1000
+		keyLen := 32
+
+		key1, err1 := deriveKeyFunc(password, "salt1", iterations, keyLen)
+		if err1 != nil {
+			t.Error(err1.Error())
+		}
+
+		key2, err2 := deriveKeyFunc(password, "salt2", iterations, keyLen)
+		if err2 != nil {
+			t.Error(err2.Error())
+		}
+
+		if bytes.Equal(key1, key2) {
+			t.Error("Different salts produced the same key")
+		}
+	})
+
+	t.Run("Different iterations produce different keys", func(t *testing.T) {
+		password := "testpassword"
+		salt := "testsalt"
+		keyLen := 32
+
+		key1, err1 := deriveKeyFunc(password, salt, 1000, keyLen)
+		if err1 != nil {
+			t.Error(err1.Error())
+		}
+
+		key2, err2 := deriveKeyFunc(password, salt, 2000, keyLen)
+		if err2 != nil {
+			t.Error(err2.Error())
+		}
+
+		if bytes.Equal(key1, key2) {
+			t.Error("Different iterations produced the same key")
+		}
+	})
+
+	t.Run("Different key lengths", func(t *testing.T) {
+		password := "testpassword"
+		salt := "testsalt"
+		iterations := 1000
+
+		key16, err1 := deriveKeyFunc(password, salt, iterations, 16)
+		if err1 != nil {
+			t.Error(err1.Error())
+		}
+
+		key32, err2 := deriveKeyFunc(password, salt, iterations, 32)
+		if err2 != nil {
+			t.Error(err2.Error())
+		}
+
+		key64, err3 := deriveKeyFunc(password, salt, iterations, 64)
+		if err3 != nil {
+			t.Error(err3.Error())
+		}
+
+		// Check correct lengths
+		if len(key16) != 16 {
+			t.Errorf("Key length is %d, expected 16", len(key16))
+		}
+		if len(key32) != 32 {
+			t.Errorf("Key length is %d, expected 32", len(key32))
+		}
+		if len(key64) != 64 {
+			t.Errorf("Key length is %d, expected 64", len(key64))
+		}
+
+		// Check that larger keys start with smaller keys
+		// This is a property of PBKDF2
+		if !bytes.Equal(key16, key32[:16]) {
+			t.Error("32-byte key doesn't start with the same bytes as 16-byte key")
+		}
+		if !bytes.Equal(key32, key64[:32]) {
+			t.Error("64-byte key doesn't start with the same bytes as 32-byte key")
+		}
+	})
+
+	t.Run("Direct comparison with pbkdf2.Key", func(t *testing.T) {
+		password := "comparisontest"
+		salt := "comparisonsalt"
+		iterations := 1000
+		keyLen := 32
+
+		// Get key from our function
+		key, err := deriveKeyFunc(password, salt, iterations, keyLen)
+		if err != nil {
+			t.Error(err.Error())
+		}
+
+		// Compute the expected key directly
+		expectedKey, err := pbkdf2.Key(sha256.New, password, []byte(salt), iterations, keyLen)
+		if err != nil {
+			t.Error(err.Error())
+		}
+
+		// Compare the keys
+		if !bytes.Equal(key, expectedKey) {
+			t.Error("deriveKey result doesn't match direct pbkdf2.Key calculation")
+		}
+	})
+
+	t.Run("Empty password handling", func(t *testing.T) {
+		salt := "testsalt"
+		iterations := 1000
+		keyLen := 32
+
+		emptyKey, err := deriveKeyFunc("", salt, iterations, keyLen)
+		if err != nil {
+			t.Error(err.Error())
+		}
+
+		// Should produce a valid key even with empty password
+		if emptyKey == nil || len(emptyKey) != keyLen {
+			t.Error("Empty password resulted in invalid key")
+		}
+
+		// Empty password should produce different key than non-empty password
+		nonEmptyKey, err := deriveKeyFunc("somepassword", salt, iterations, keyLen)
+		if err != nil {
+			t.Error(err.Error())
+		}
+
+		if bytes.Equal(emptyKey, nonEmptyKey) {
+			t.Error("Empty and non-empty passwords produced the same key")
+		}
+	})
+
+	t.Run("Empty salt handling", func(t *testing.T) {
+		password := "testpassword"
+		iterations := 1000
+		keyLen := 32
+
+		emptyKey, err := deriveKeyFunc(password, "", iterations, keyLen)
+		if err != nil {
+			t.Error(err.Error())
+		}
+
+		// Should produce a valid key even with empty salt
+		if emptyKey == nil || len(emptyKey) != keyLen {
+			t.Error("Empty salt resulted in invalid key")
+		}
+
+		// Empty salt should produce different key than non-empty salt
+		nonEmptyKey, err := deriveKeyFunc(password, "somesalt", iterations, keyLen)
+		if err != nil {
+			t.Error(err.Error())
+		}
+
+		if bytes.Equal(emptyKey, nonEmptyKey) {
+			t.Error("Empty and non-empty salts produced the same key")
+		}
+	})
+
+	t.Run("Zero iterations handling", func(t *testing.T) {
+		password := "testpassword"
+		salt := "testsalt"
+		keyLen := 32
+
+		// Zero iterations should still work in PBKDF2
+		_, err := deriveKeyFunc(password, salt, 0, keyLen)
+		if err == nil {
+			t.Error("Zero iterations should have failed")
+		}
+	})
+
+	t.Run("Special character handling", func(t *testing.T) {
+		specialChars := "!@#$%^&*()_+{}:\"|<>?~`-=[]\\;',./䨻"
+		salt := "normalsalt"
+		iterations := 1000
+		keyLen := 32
+
+		key, err1 := deriveKeyFunc(specialChars, salt, iterations, keyLen)
+		if err1 != nil {
+			t.Error(err1.Error())
+		}
+
+		// Should produce a valid key
+		if key == nil || len(key) != keyLen {
+			t.Error("Special characters resulted in invalid key")
+		}
+
+		// Verify consistency
+		key2, err2 := deriveKeyFunc(specialChars, salt, iterations, keyLen)
+		if err2 != nil {
+			t.Error(err2.Error())
+		}
+
+		if !bytes.Equal(key, key2) {
+			t.Error("Inconsistent key derivation with special characters")
+		}
+	})
+
+	t.Run("Unicode character handling", func(t *testing.T) {
+		unicodePassword := "пароль密码パスワードكلمة المرور"
+		salt := "normalsalt"
+		iterations := 1000
+		keyLen := 32
+
+		key, err1 := deriveKeyFunc(unicodePassword, salt, iterations, keyLen)
+		if err1 != nil {
+			t.Error(err1.Error())
+		}
+
+		// Should produce a valid key
+		if key == nil || len(key) != keyLen {
+			t.Error("Unicode characters resulted in invalid key")
+		}
+
+		// Verify consistency
+		key2, err2 := deriveKeyFunc(unicodePassword, salt, iterations, keyLen)
+		if err2 != nil {
+			t.Error(err2.Error())
+		}
+
+		if !bytes.Equal(key, key2) {
+			t.Error("Inconsistent key derivation with Unicode characters")
+		}
+	})
+
+	t.Run("Performance with high iterations", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("Skipping performance test in short mode")
+		}
+
+		password := "testpassword"
+		salt := "testsalt"
+		keyLen := 32
+		highIterations := 100000 // High but reasonable for PBKDF2
+
+		// This should complete without timing out
+		key, err := deriveKeyFunc(password, salt, highIterations, keyLen)
+		if err != nil {
+			t.Error(err.Error())
+		}
+
+		if key == nil || len(key) != keyLen {
+			t.Error("High iterations resulted in invalid key")
 		}
 	})
 }

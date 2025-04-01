@@ -47,15 +47,24 @@ func generateSalt() string {
 func GetEncryptionKey() string {
 	master := db.Get("$MASTER$")
 	parts := strings.Split(string(master), ".")
-	return string(deriveKey(parts[0], parts[1], 10, 32))
+	key, err := deriveKey(parts[0], parts[1], 10, 32)
+	if err != nil {
+		log.Fatalf("Failed to derive encryption key: %s", err.Error())
+	}
+
+	return string(key)
 }
 
-func deriveKey(password, salt string, iterations, keyLen int) []byte {
+func deriveKey(password, salt string, iterations, keyLen int) ([]byte, error) {
+	if iterations == 0 {
+		return nil, errors.New("key iterations must be more than 0")
+	}
+
 	key, err := pbkdf2.Key(sha256.New, password, []byte(salt), iterations, keyLen)
 	if err != nil {
-		log.Fatalf("Error deriving key: %v", err)
+		return nil, err
 	}
-	return key
+	return key, nil
 }
 
 func Encrypt(plaintext, key string) (string, error) {
