@@ -28,7 +28,6 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version number of Keystone",
 	Long:  `All software has versions. This is Keystone's`,
 	Run: func(cmd *cobra.Command, args []string) {
-		auth.CheckPassword()
 		handlers.PrintVersion()
 	},
 }
