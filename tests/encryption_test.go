@@ -1,8 +1,14 @@
 package tests
 
 import (
+	"encoding/base64"
 	"keystone/lib/auth"
+	"reflect"
+	"regexp"
+	"strings"
 	"testing"
+
+	"golang.org/x/crypto/argon2"
 )
 
 func TestEncrypt(t *testing.T) {
@@ -151,6 +157,417 @@ func TestDecrypt(t *testing.T) {
 		_, err := auth.Decrypt("", key)
 		if err == nil {
 			t.Fatal("Expected error for empty ciphertext, but got nil")
+		}
+	})
+}
+
+func TestGenerateSalt(t *testing.T) {
+	// Access the exported function through TestExport
+	generateSaltFunc := auth.TestExport.GenerateSalt
+
+	t.Run("Salt format validation", func(t *testing.T) {
+		salt := generateSaltFunc()
+
+		// Check that salt is valid base64 encoded string
+		_, err := base64.StdEncoding.DecodeString(salt)
+		if err != nil {
+			t.Errorf("Generated salt is not a valid base64 string: %s", salt)
+		}
+
+		// Check that salt matches base64 pattern
+		base64Pattern := "^[A-Za-z0-9+/]*={0,2}$"
+		matched, _ := regexp.MatchString(base64Pattern, salt)
+		if !matched {
+			t.Errorf("Salt does not match expected base64 pattern: %s", salt)
+		}
+	})
+
+	t.Run("Salt length validation", func(t *testing.T) {
+		salt := generateSaltFunc()
+
+		// Decode salt to check original length
+		decoded, err := base64.StdEncoding.DecodeString(salt)
+		if err != nil {
+			t.Fatalf("Failed to decode salt: %v", err)
+		}
+
+		// Check that original salt is 16 bytes as defined in the function
+		expectedLength := 16
+		if len(decoded) != expectedLength {
+			t.Errorf("Decoded salt length is %d, expected %d bytes", len(decoded), expectedLength)
+		}
+
+		// Base64 encoding of 16 bytes should be 24 characters (including padding)
+		// This is because base64 encodes 3 bytes into 4 characters
+		// So 16 bytes -> ceil(16/3)*4 = ceil(5.33)*4 = 6*4 = 24 characters
+		expectedEncodedLength := 24
+		if len(salt) != expectedEncodedLength {
+			t.Errorf("Encoded salt length is %d, expected %d characters", len(salt), expectedEncodedLength)
+		}
+	})
+
+	t.Run("Salt uniqueness", func(t *testing.T) {
+		// Generate multiple salts and verify they're unique
+		saltMap := make(map[string]bool)
+		iterations := 100
+
+		for i := 0; i < iterations; i++ {
+			salt := generateSaltFunc()
+			if saltMap[salt] {
+				t.Errorf("Duplicate salt generated: %s", salt)
+			}
+			saltMap[salt] = true
+		}
+
+		// Verify we have the expected number of unique salts
+		if len(saltMap) != iterations {
+			t.Errorf("Expected %d unique salts, got %d", iterations, len(saltMap))
+		}
+	})
+
+	t.Run("Salt randomness check", func(t *testing.T) {
+		// Basic randomness check by character frequency analysis
+		// This is not a comprehensive randomness test, but can catch obvious issues
+		iterations := 1000
+		charFreq := make(map[byte]int)
+		totalChars := 0
+
+		for i := 0; i < iterations; i++ {
+			salt := generateSaltFunc()
+			for j := 0; j < len(salt); j++ {
+				charFreq[salt[j]]++
+				totalChars++
+			}
+		}
+
+		// Check if any character appears with extreme frequency
+		// For a random distribution, we expect roughly even distribution
+		avgFreq := float64(totalChars) / float64(len(charFreq))
+		for char, freq := range charFreq {
+			// Allow for some statistical variation, but catch major deviations
+			// (this is a simplified check, not a rigorous statistical test)
+			ratio := float64(freq) / avgFreq
+			if ratio < 0.5 || ratio > 2.0 {
+				t.Logf("Character %c (%d) has unusual frequency: %d occurrences (%.2f of expected)", char, char, freq, ratio)
+				// Not failing the test because randomness can have natural variations
+				// Just logging for investigation if needed
+			}
+		}
+
+		// Verify we have a reasonable character set size for base64
+		// We expect to see most of the 64 possible base64 characters + padding
+		expectedMinChars := 40 // Reasonable lower bound for 1000 iterations
+		if len(charFreq) < expectedMinChars {
+			t.Errorf("Only %d unique characters observed in %d salts, expected at least %d",
+				len(charFreq), iterations, expectedMinChars)
+		}
+	})
+
+	t.Run("Consistent salt size across calls", func(t *testing.T) {
+		// Verify that each generated salt has the same length
+		firstSalt := generateSaltFunc()
+		firstLength := len(firstSalt)
+
+		for i := 0; i < 50; i++ {
+			salt := generateSaltFunc()
+			if len(salt) != firstLength {
+				t.Errorf("Inconsistent salt length: got %d, expected %d", len(salt), firstLength)
+			}
+		}
+	})
+}
+
+func TestHashPassword(t *testing.T) {
+	// Access the exported function through TestExport
+	hashPasswordFunc := auth.TestExport.HashPassword
+
+	t.Run("Basic functionality", func(t *testing.T) {
+		password := "testpassword"
+		salt := "MTIzNDU2Nzg5MDEyMzQ1Ng==" // Base64 encoded fixed salt for testing
+
+		hash := hashPasswordFunc(password, salt)
+
+		// Verify the hash is not empty
+		if hash == "" {
+			t.Error("hashPassword returned an empty string")
+		}
+
+		// Verify the hash is valid base64
+		_, err := base64.StdEncoding.DecodeString(hash)
+		if err != nil {
+			t.Errorf("Generated hash is not a valid base64 string: %s", hash)
+		}
+
+		// Check base64 pattern
+		base64Pattern := "^[A-Za-z0-9+/]*={0,2}$"
+		matched, _ := regexp.MatchString(base64Pattern, hash)
+		if !matched {
+			t.Errorf("Hash does not match expected base64 pattern: %s", hash)
+		}
+	})
+
+	t.Run("Consistency with same inputs", func(t *testing.T) {
+		password := "mysecretpassword"
+		salt := "c29tZXJhbmRvbXNhbHQ=" // Some fixed salt for testing
+
+		// Generate hash twice with same inputs
+		hash1 := hashPasswordFunc(password, salt)
+		hash2 := hashPasswordFunc(password, salt)
+
+		// Hashes should be identical for same inputs
+		if hash1 != hash2 {
+			t.Errorf("hashPassword produced different results for same inputs: %s vs %s", hash1, hash2)
+		}
+	})
+
+	t.Run("Different passwords produce different hashes", func(t *testing.T) {
+		salt := "c29tZXJhbmRvbXNhbHQ=" // Same salt for both
+
+		hash1 := hashPasswordFunc("password1", salt)
+		hash2 := hashPasswordFunc("password2", salt)
+
+		if hash1 == hash2 {
+			t.Error("Different passwords produced the same hash")
+		}
+	})
+
+	t.Run("Different salts produce different hashes", func(t *testing.T) {
+		password := "samepassword" // Same password for both
+
+		hash1 := hashPasswordFunc(password, "c29tZXJhbmRvbXNhbHQx") // salt1
+		hash2 := hashPasswordFunc(password, "c29tZXJhbmRvbXNhbHQy") // salt2
+
+		if hash1 == hash2 {
+			t.Error("Different salts produced the same hash")
+		}
+	})
+
+	t.Run("Hash length verification", func(t *testing.T) {
+		password := "testpassword"
+		salt := "c29tZXJhbmRvbXNhbHQ="
+
+		hash := hashPasswordFunc(password, salt)
+		decoded, _ := base64.StdEncoding.DecodeString(hash)
+
+		// Argon2 with 32-byte output should result in 32 bytes
+		expectedBytes := 32
+		if len(decoded) != expectedBytes {
+			t.Errorf("Hash length is %d bytes, expected %d bytes", len(decoded), expectedBytes)
+		}
+
+		// Base64 encoding of 32 bytes should be 44 characters (including padding)
+		// 32 bytes -> ceil(32/3)*4 = ceil(10.67)*4 = 11*4 = 44 characters
+		expectedEncodedLength := 44
+		if len(hash) != expectedEncodedLength {
+			t.Errorf("Encoded hash length is %d, expected %d characters", len(hash), expectedEncodedLength)
+		}
+	})
+
+	t.Run("Direct comparison with argon2.IDKey", func(t *testing.T) {
+		password := "directcomparisontest"
+		saltString := "ZGlyZWN0Y29tcGFyaXNvbg==" // "directcomparison" in base64
+		saltBytes, _ := base64.StdEncoding.DecodeString(saltString)
+
+		// Get hash from our function
+		hash := hashPasswordFunc(password, saltString)
+		decodedHash, _ := base64.StdEncoding.DecodeString(hash)
+
+		// Compute the expected hash directly
+		expectedHash := argon2.IDKey([]byte(password), saltBytes, 1, 64*1024, 4, 32)
+
+		// Compare the raw hash bytes
+		if !reflect.DeepEqual(decodedHash, expectedHash) {
+			t.Error("hashPassword result doesn't match direct argon2.IDKey calculation")
+		}
+	})
+
+	t.Run("Empty password handling", func(t *testing.T) {
+		salt := "c29tZXJhbmRvbXNhbHQ="
+		emptyHash := hashPasswordFunc("", salt)
+
+		// Should produce a valid hash even with empty password
+		if emptyHash == "" {
+			t.Error("Empty password resulted in empty hash")
+		}
+
+		// Empty password should produce different hash than non-empty password
+		nonEmptyHash := hashPasswordFunc("somepassword", salt)
+		if emptyHash == nonEmptyHash {
+			t.Error("Empty and non-empty passwords produced the same hash")
+		}
+	})
+
+	t.Run("Special character handling", func(t *testing.T) {
+		salt := "c29tZXJhbmRvbXNhbHQ="
+		specialChars := "!@#$%^&*()_+{}:\"|<>?~`-=[]\\;',./䨻"
+
+		hash := hashPasswordFunc(specialChars, salt)
+
+		// Should produce a valid hash
+		if hash == "" {
+			t.Error("Special characters resulted in empty hash")
+		}
+
+		// Verify consistency
+		hash2 := hashPasswordFunc(specialChars, salt)
+		if hash != hash2 {
+			t.Error("Inconsistent hashing with special characters")
+		}
+	})
+
+	t.Run("Unicode character handling", func(t *testing.T) {
+		salt := "c29tZXJhbmRvbXNhbHQ="
+		unicodePassword := "пароль密码パスワードكلمة المرور"
+
+		hash := hashPasswordFunc(unicodePassword, salt)
+
+		// Should produce a valid hash
+		if hash == "" {
+			t.Error("Unicode characters resulted in empty hash")
+		}
+
+		// Verify consistency
+		hash2 := hashPasswordFunc(unicodePassword, salt)
+		if hash != hash2 {
+			t.Error("Inconsistent hashing with Unicode characters")
+		}
+	})
+}
+
+func TestNewPassword(t *testing.T) {
+	newPasswordFunc := auth.TestExport.NewPassword
+	validatePasswordFunc := auth.TestExport.ValidatePassword
+
+	t.Run("Basic functionality", func(t *testing.T) {
+		password := "mysecretpassword"
+		result := newPasswordFunc(password)
+
+		// Check format: should be "hash.salt"
+		parts := strings.Split(result, ".")
+		if len(parts) != 2 {
+			t.Errorf("Expected result format 'hash.salt', got: %s", result)
+		}
+
+		// Verify the created password hash validates correctly
+		if !validatePasswordFunc(password, result) {
+			t.Errorf("Password validation failed for newly created hash: %s", result)
+		}
+	})
+
+	t.Run("Consistent hash format", func(t *testing.T) {
+		for _, password := range []string{"simple", "Complex123!", "超級密碼", "verylongpasswordthatexceedstypicalrequirements"} {
+			result := newPasswordFunc(password)
+
+			parts := strings.Split(result, ".")
+			if len(parts) != 2 {
+				t.Errorf("Invalid hash format for password %q, got: %s", password, result)
+			}
+
+			// Hash and salt should both be non-empty
+			if parts[0] == "" || parts[1] == "" {
+				t.Errorf("Empty hash or salt for password %q: %s", password, result)
+			}
+		}
+	})
+
+	t.Run("Unique salts", func(t *testing.T) {
+		// Same password should produce different hashes due to different salts
+		password := "samepassword"
+		results := make(map[string]bool)
+
+		for i := 0; i < 10; i++ {
+			result := newPasswordFunc(password)
+			parts := strings.Split(result, ".")
+			if len(parts) != 2 {
+				t.Errorf("Invalid hash format: %s", result)
+				continue
+			}
+
+			salt := parts[1]
+			if results[salt] {
+				t.Errorf("Salt reused: %s", salt)
+			}
+			results[salt] = true
+		}
+	})
+
+	t.Run("Unique hashes for same password", func(t *testing.T) {
+		// Same password should generate different hashes due to different salts
+		password := "testpassword"
+		hashes := make(map[string]bool)
+
+		for i := 0; i < 5; i++ {
+			result := newPasswordFunc(password)
+			if hashes[result] {
+				t.Errorf("Generated identical hash: %s", result)
+			}
+			hashes[result] = true
+		}
+	})
+
+	t.Run("Empty password handling", func(t *testing.T) {
+		result := newPasswordFunc("")
+
+		// Should still produce a valid format
+		parts := strings.Split(result, ".")
+		if len(parts) != 2 {
+			t.Errorf("Invalid hash format for empty password: %s", result)
+		}
+
+		// Should validate with empty string
+		if !validatePasswordFunc("", result) {
+			t.Errorf("Validation failed for empty password hash: %s", result)
+		}
+	})
+
+	t.Run("Different passwords produce different hashes", func(t *testing.T) {
+		password1 := "password1"
+		password2 := "password2"
+
+		// Force same salt to test that different passwords give different hashes
+		// We'll need to mock the generateSalt function for this test
+		generateSaltFunc := auth.TestExport.GenerateSalt
+		salt := generateSaltFunc()
+
+		hashPasswordFunc := auth.TestExport.HashPassword
+		hash1 := hashPasswordFunc(password1, salt)
+		hash2 := hashPasswordFunc(password2, salt)
+
+		if hash1 == hash2 {
+			t.Errorf("Different passwords produced same hash with same salt")
+		}
+	})
+
+	t.Run("Edge case: special characters", func(t *testing.T) {
+		specialChars := "!@#$%^&*()_+{}:\"|<>?~`-=[]\\;',./䨻"
+		result := newPasswordFunc(specialChars)
+
+		// Should produce a valid format
+		parts := strings.Split(result, ".")
+		if len(parts) != 2 {
+			t.Errorf("Invalid hash format for password with special chars: %s", result)
+		}
+
+		// Should validate correctly
+		if !validatePasswordFunc(specialChars, result) {
+			t.Errorf("Validation failed for password with special chars: %s", result)
+		}
+	})
+
+	t.Run("Consistency check", func(t *testing.T) {
+		// Mock fixed salt generation to test hash consistency
+		originalSalt := auth.TestExport.GenerateSalt()
+		originalHash := auth.TestExport.HashPassword("testpassword", originalSalt)
+		formattedResult := originalHash + "." + originalSalt
+
+		// Should validate with the original password
+		if !validatePasswordFunc("testpassword", formattedResult) {
+			t.Errorf("Validation failed for consistent hash/salt combination")
+		}
+
+		// Should not validate with a different password
+		if validatePasswordFunc("wrongpassword", formattedResult) {
+			t.Errorf("Validation incorrectly passed with wrong password")
 		}
 	})
 }
